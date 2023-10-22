@@ -1,0 +1,161 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+### Cyclistic_Exercise_Full_Year_Analysis
+
+#### This analysis is for case study 1 from the Google Data Analytics Certificate (Cyclistic). It's originally based on the case study "'Sophisticated, Clear, and Polished': Divvy and Data Visualization" written by Kevin Hartman (found here: <https://artscience.blog/home/divvy-dataviz-case-study>).
+
+#### We will be using the Divvy dataset for the case study. The purpose of this script is to consolidate downloaded Divvy data into a single dataframe and then conduct simple analysis to help answer the key question: "In what ways do members and casual riders use Divvy bikes differently?"
+
+```{r, message = FALSE}
+# Load packages
+library(tidyverse) # contained ggplot2
+library(lubridate) # date
+library(janitor)   # data cleaning
+library(skimr)     # data cleaning
+```
+
+Now that necessary packages loaded, let's import our csv files.
+
+```{r,}
+# Import csv files
+jan22<-read_csv("202201_divvy_tripdata.csv")
+feb22 <- read_csv("202202-divvy-tripdata.csv")
+mar22 <- read_csv("202203-divvy-tripdata.csv")
+apr22 <- read_csv("202204-divvy-tripdata.csv")
+may22 <- read_csv("202205-divvy-tripdata.csv")
+jun22 <- read_csv("202206-divvy-tripdata.csv")
+jul22 <- read_csv("202207-divvy-tripdata.csv")
+aug22 <- read_csv("202208-divvy-tripdata.csv")
+sep22 <- read_csv("202209-divvy-tripdata.csv")
+sep22 <- read_csv("202209-divvy-tripdata.csv")
+oct22 <- read_csv("202210-divvy-tripdata.csv")
+nov22 <- read_csv("202211-divvy-tripdata.csv")
+dec22 <- read_csv("202212-divvy-tripdata.csv")
+
+# check all the files
+str(jan22)
+str(feb22)
+str(mar22)
+str(apr22)
+str(may22)
+str(jun22)
+str(jul22)
+str(aug22)
+str(sep22)
+str(oct22)
+str(nov22)
+str(dec22)
+```
+
+after checking all the csv files, now let's combined them into 1 files.
+
+```{r}
+all_trips <- bind_rows(jan22, feb22, mar22, apr22, may22, jun22, jul22, aug22, sep22, oct22, nov22, dec22)
+
+# let's check the files
+str(all_trips)
+```
+
+
+Now that we have our data, let's do some cleaning.
+Current dataset date format is DD/MM/YYYY, let's convert it default format.
+
+```{r}
+all_trips$date <- as.Date(all_trips$started_at, format = "%d/%m/%Y")
+
+# and let's add column that list year, month and date for each ride.
+all_trips$month <- format(as.Date(all_trips$date), "%m")
+all_trips$day <- format(as.Date(all_trips$date), "%d")
+all_trips$year <- format(as.Date(all_trips$date), "%Y")
+
+# and since our day_of_week column is in numeric, let's change it to alphabet
+all_trips$day_of_week <- format(as.Date(all_trips$date), "%A")
+```
+
+Now that we've done with the date, we have to convert the ride_length into seconds format.
+Notice that started_at & ended_at column is in unproper format, let's change them first to proper datetime objects.
+
+```{r}
+all_trips$ended_at_datetime <- as.POSIXct(paste(all_trips$ended_at), format = "%d/%m/%Y %H:%M")
+all_trips$started_at_datetime <- as.POSIXct(paste(all_trips$started_at), format = "%d/%m/%Y %H:%M")
+
+# Now that we have proper datetime format, let's calculate the ride length.
+all_trips$ride_length <- difftime(all_trips$ended_at_datetime, all_trips$started_at_datetime)
+```
+
+Since we have our data, notice that we have negative and 0 value ride length.
+Let's do some cleaning to remove this 'bad' data.
+
+```{r}
+all_trips_v2 <- all_trips[!(all_trips$ride_length <= 0),]
+```
+
+And it's done!
+Let's do descriptive analysis.
+
+```{r}
+mean(all_trips_v2$ride_length)
+median(all_trips_v2$ride_length)
+max(all_trips_v2$ride_length)
+min(all_trips_v2$ride_length)
+
+# Now let's compare members and casual riders
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = mean)
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = median)
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = max)
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = min)
+
+# Let's see the average ride time by each day for members vs casual users
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual + all_trips_v2$day_of_week, FUN = mean)
+
+# Data came out good, however the day of the week is out of order. Let's fix this.
+all_trips_v2$day_of_week <- ordered(all_trips_v2$day_of_week, levels=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+
+# Let's run previous code again.
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual + all_trips_v2$day_of_week, FUN = mean)
+```
+
+Let's analyze ridership data by type and weekday
+
+```{r}
+all_trips_v2 %>%
+  mutate(weekday = lubridate::wday(started_at_datetime, label = TRUE)) %>%
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n(), average_duration = mean(ride_length)) %>%
+  arrange(member_casual, weekday)
+```
+
+Let's visualize the number of ride by rider type.
+
+```{r}
+all_trips_v2 %>%
+  mutate(weekday = lubridate::wday(started_at_datetime, label = TRUE)) %>%
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n(), average_duration = mean(ride_length)) %>%
+  arrange(member_casual, weekday) %>%
+  ggplot(aes(x = weekday, y = number_of_rides, fill = member_casual)) + geom_col(position = "dodge")
+```
+
+Now let's create a visualization for average duration.
+
+```{r}
+all_trips_v2 %>%
+  mutate(weekday = lubridate::wday(started_at_datetime, label = TRUE)) %>%
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n(), average_duration = mean(ride_length)) %>%
+  arrange(member_casual, weekday) %>%
+  ggplot(aes(x = weekday, y = average_duration, fill = member_casual)) + geom_col(position = "dodge")
+```
+
+Let's export file for further analysis.
+
+```{r}
+counts <- aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual + all_trips_v2$day_of_week, FUN = mean)
+```
+
+# Conclusion
+Thank you for spending your time looking at my analysis.
+There is still error somewhere, please comment if I can improve more.
